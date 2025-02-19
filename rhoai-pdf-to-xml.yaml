@@ -1,0 +1,102 @@
+# PIPELINE DEFINITION
+# Name: rhoai-pdf-to-xml
+# Inputs:
+#    file_identifier: str
+components:
+  comp-run-a-file:
+    executorLabel: exec-run-a-file
+    inputDefinitions:
+      parameters:
+        file_identifier:
+          isOptional: true
+          parameterType: STRING
+deploymentSpec:
+  executors:
+    exec-run-a-file:
+      container:
+        args:
+        - 'file_identifier="$0"
+
+          sh -c "mkdir -p ./jupyter-work-dir && cd ./jupyter-work-dir"
+
+          sh -c "echo ''Downloading file:///opt/app-root/bin/utils/bootstrapper.py''
+          && curl --fail -H ''Cache-Control: no-cache'' -L file:///opt/app-root/bin/utils/bootstrapper.py
+          --output bootstrapper.py"
+
+          sh -c "echo ''Downloading file:///opt/app-root/bin/utils/requirements-elyra.txt''
+          && curl --fail -H ''Cache-Control: no-cache'' -L file:///opt/app-root/bin/utils/requirements-elyra.txt
+          --output requirements-elyra.txt"
+
+          sh -c "python3 -m pip install  packaging && python3 -m pip freeze > requirements-current.txt
+          && python3 bootstrapper.py --pipeline-name ''rhoai-pdf-to-xml'' --cos-endpoint
+          ''https://minio-api-safra-ai.apps.rosa-5hxrw.72zm.p1.openshiftapps.com''
+          --cos-bucket ''pipelines'' --cos-directory ''rhoai-pdf-to-xml-0913210320''
+          --cos-dependencies-archive ''rhoai-pdf-to-xml-b2c8ebd5-c444-423b-a093-59303ab366e1.tar.gz''
+          --file ''rhoai-pdf-to-xml.py'' --pipeline-parameters ''file_identifier=$file_identifier''
+          --parameter-pass-method ''env'' "
+
+          '
+        - '{{$.inputs.parameters[''file_identifier'']}}'
+        command:
+        - sh
+        - -c
+        env:
+        - name: ELYRA_RUNTIME_ENV
+          value: kfp
+        - name: ELYRA_ENABLE_PIPELINE_INFO
+          value: 'True'
+        - name: ELYRA_WRITABLE_CONTAINER_DIR
+          value: /tmp
+        - name: ELYRA_RUN_NAME
+          value: '{{workflow.uid}}'
+        image: quay.io/modh/runtime-images@sha256:df1adec7e0623afd07fbe2d6fd6f759800d93c136c33a5b322ed347cbbbd70aa
+        resources:
+          cpuLimit: 8.0
+          cpuRequest: 2.0
+          memoryRequest: 2.0
+pipelineInfo:
+  name: rhoai-pdf-to-xml
+root:
+  dag:
+    tasks:
+      run-a-file:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-run-a-file
+        inputs:
+          parameters:
+            file_identifier:
+              componentInputParameter: file_identifier
+        taskInfo:
+          name: rhoai-pdf-to-xml
+  inputDefinitions:
+    parameters:
+      file_identifier:
+        isOptional: true
+        parameterType: STRING
+schemaVersion: 2.1.0
+sdkVersion: kfp-2.8.0
+---
+platforms:
+  kubernetes:
+    deploymentSpec:
+      executors:
+        exec-run-a-file:
+          podMetadata:
+            annotations:
+              elyra/node-file-name: rhoai-pdf-to-xml.py
+              elyra/pipeline-source: rhoai-pdf-to-xml.pipeline
+            labels:
+              elyra/experiment-name: ''
+              elyra/node-name: rhoai-pdf-to-xml
+              elyra/node-type: notebook-script
+              elyra/pipeline-name: rhoai-pdf-to-xml
+              elyra/pipeline-version: ''
+          secretAsEnv:
+          - keyToEnv:
+            - envVar: AWS_ACCESS_KEY_ID
+              secretKey: AWS_ACCESS_KEY_ID
+            - envVar: AWS_SECRET_ACCESS_KEY
+              secretKey: AWS_SECRET_ACCESS_KEY
+            secretName: dashboard-dspa-secret
