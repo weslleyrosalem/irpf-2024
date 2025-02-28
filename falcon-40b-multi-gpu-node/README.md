@@ -1,6 +1,11 @@
-# 1 Create S3 Bucket
+# Deploying models by using multiple GPU nodes 
 
-# 2 Download model to a bastion host and upload to S3
+https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/2.17/html-single/serving_models/index#deploying-models-using-multiple-gpu-nodes_serving-large-models
+
+
+## 1 Create S3 Bucket
+
+## 2 Download model to a bastion host and upload to S3
 [ec2-user@ip-10-0-95-118 ~]$ sudo dnf -y install python3-pip git
 
 [ec2-user@ip-10-0-95-118 ~]$ sudo dnf install -y awscli
@@ -17,21 +22,21 @@
 
 [ec2-user@ip-10-0-95-118 ~]$ aws s3 sync .cache/huggingface/hub/models--tiiuae--falcon-40b-instruct/ s3://rhoai-llm-model/falcon-40b-instruct/ 
 
-# 3 Create a RWX PVC
+## 3 Create a RWX PVC
 -> pvc-falcon-40b.yaml
 
-# 4 Download the model to PV
+## 4 Download the model to PV
 -> pod-download-model-to-pv.yaml
 
 PS: In the near future, it will not be necessary to download the model to the PV, since distributed inference will be available directly through the RHOAI Dashboard, pointing directly to S3 compatible storage.
 
-# 5 Create the vllm-multinode-runtime custom runtime:
+## 5 Create the vllm-multinode-runtime custom runtime:
 oc process vllm-multinode-runtime-template -n redhat-ods-applications|oc apply -n kserve-demo -f -
 
-# 6 Deploy the model using the following InferenceService configuration:
+## 6 Deploy the model using the following InferenceService configuration:
 -> InferenceService.yaml
 
-# 7 Validating the Deploy
+## 7 Validating the Deploy
 
 wrosalem@Mac % oc get pods
 NAME                                                   READY   STATUS      RESTARTS      AGE
