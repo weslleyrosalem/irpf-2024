@@ -2,23 +2,24 @@ import os
 import sys
 import uuid
 import logging
+import re
 
-# (Optional) If you need to auto-install packages:
+# Caso precise instalar pacotes de forma automática, é só descomentar e ajustar:
 # import subprocess
 # def install(package):
 #     subprocess.check_call([sys.executable, "-m", "pip", "install", package])
-# dependencies = [
+# dependencias = [
 #     "sentence-transformers", "pymilvus", "openai==0.28", "langchain", 
 #     "langchain_community", "minio", "pymupdf", "Pillow", "pytesseract", 
-#     "pandas", "langchain-milvus", "opencv-python", "pdf2image", "vllm"
+#     "pandas", "langchain-milvus", "opencv-python", "pdf2image", "vllm",
+#     "transformers"
 # ]
-# for dep in dependencies:
+# for dep in dependencias:
 #     install(dep)
 
-# Logging
 logging.basicConfig(level=logging.DEBUG)
 
-import fitz  # PyMuPDF
+import fitz
 import pytesseract
 from pytesseract import Output
 import pandas as pd
@@ -35,9 +36,9 @@ from langchain.chat_models import ChatOpenAI
 from langchain.schema import SystemMessage, HumanMessage
 from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
 
-# -----------------------------
-# CONFIG SECTION
-# -----------------------------
+# --------------------------------------------------------------------------------
+# CONFIGURAÇÕES PRINCIPAIS
+# --------------------------------------------------------------------------------
 AWS_S3_ENDPOINT = "minio-api-minio.apps.cluster-lqsm2.lqsm2.sandbox441.opentlc.com"
 AWS_ACCESS_KEY_ID = "minio"
 AWS_SECRET_ACCESS_KEY = "minio123"
@@ -49,20 +50,18 @@ MILVUS_USERNAME = "root"
 MILVUS_PASSWORD = "Milvus"
 MILVUS_COLLECTION = "irpf"
 
+# Endereço do servidor e modelo LLM que será utilizado
 INFERENCE_SERVER_URL = "http://vllm.vllm.svc.cluster.local:8000"
-LLM_MODEL_NAME = "meta-llama/Meta-Llama-3-8B-Instruct"
+LLM_MODEL_NAME = "tiiuae/falcon-40b-instruct"
 
-# If you need Tesseract in Portuguese, 
-# ensure your environment has the 'por' language data installed.
+# Modelo usado para tokenização do Falcon
+FALCON_CHECKPOINT = "tiiuae/falcon-40b-instruct"
 
-# -----------------------------
-# SETUP
-# -----------------------------
 http_client = urllib3.PoolManager(
     timeout=urllib3.Timeout(connect=5.0, read=10.0)
 )
 
-# MinIO client
+# Configura o cliente MinIO
 client = Minio(
     AWS_S3_ENDPOINT,
     access_key=AWS_ACCESS_KEY_ID,
@@ -71,78 +70,77 @@ client = Minio(
     http_client=http_client
 )
 
-# The file identifier (if not set by environment, define manually)
+# Captura o nome do arquivo a partir de variável de ambiente, se existir
 file_identifier = os.getenv('file_identifier', "joao-2023")
 if not file_identifier:
-    print("Error: file_identifier environment variable is not set.")
+    print("Erro: variável de ambiente file_identifier não definida.")
     sys.exit(1)
 
 execution_id = str(uuid.uuid4())
 
-# Download from MinIO
 object_name = f"{file_identifier}.pdf"
 file_path = f"./{file_identifier}.pdf"
 output_pdf_path = f"./{file_identifier}_no_watermark.pdf"
 
+# --------------------------------------------------------------------------------
+# BAIXA O PDF DO MINIO
+# --------------------------------------------------------------------------------
 try:
     client.fget_object(AWS_S3_BUCKET, object_name, file_path)
-    print(f"'{object_name}' successfully downloaded to '{file_path}'.")
+    print(f"Arquivo '{object_name}' baixado com sucesso em '{file_path}'.")
 except S3Error as e:
-    print("Error occurred:", e)
+    print("Ocorreu um erro ao baixar o PDF:", e)
     sys.exit(1)
 
-# -----------------------------
-# WATERMARK REMOVAL
-# -----------------------------
+# --------------------------------------------------------------------------------
+# FUNÇÃO PARA REMOVER MARCA D'ÁGUA E/OU IMAGENS
+# --------------------------------------------------------------------------------
 def remove_watermark_advanced(pdf_path, output_path):
     """
-    Removes images from each page (which might remove content if 
-    the PDF is entirely image-based). Also hides any annotation
-    titled 'Watermark'. Adjust as needed!
+    Remove imagens de cada página e oculta anotações que contenham 'Watermark' no título.
+    Pode apagar conteúdos importantes se o PDF for todo em imagem, então revise o uso.
     """
     doc = fitz.open(pdf_path)
     for page in doc:
-        # Remove all images on the page
+        # Deleta todas as imagens
         image_list = page.get_images(full=True)
         for img in image_list:
             xref = img[0]
             page.delete_image(xref)
 
-        # If there's an annotation with title "Watermark", hide it
+        # Verifica se há anotações com título "Watermark" e as oculta
         annots = page.annots()
         if annots:
             for annot in annots:
-                annot_info = annot.info
-                if "Watermark" in annot_info.get("title", ""):
+                info = annot.info
+                if "Watermark" in info.get("title", ""):
                     annot.set_flags(fitz.ANNOT_HIDDEN)
 
         page.apply_redactions()
 
     doc.save(output_path)
-    print(f"Watermark removed: {output_path}")
+    print(f"Marca d'água removida (ou imagens deletadas): {output_path}")
 
-# Comment out if removing all images kills your content
+# Caso necessário, comente essa linha se não quiser remover todas as imagens
 remove_watermark_advanced(file_path, output_pdf_path)
 
-
-# -----------------------------
-# OCR EXTRACTION
-# -----------------------------
+# --------------------------------------------------------------------------------
+# EXTRAÇÃO DE TEXTO VIA OCR
+# --------------------------------------------------------------------------------
 def extract_text_ocr(pdf_path):
     """
-    Convert pages to images and run Tesseract. 
-    If the PDF is actually text-based, you'd likely get better results
-    with doc = fitz.open(pdf_path); doc[i].get_text() directly.
+    Converte páginas para imagens e aciona o Tesseract. 
+    Em PDFs que já tenham texto interno, a extração direta via fitz pode ser melhor.
     """
     extracted_text = ""
     if not os.path.exists(pdf_path):
-        print(f"The file {pdf_path} was not found.")
+        print(f"Arquivo não encontrado: {pdf_path}")
         return ""
 
     try:
         pages = convert_from_path(pdf_path)
         for i, page_img in enumerate(pages):
-            print(f"Processing page {i+1}/{len(pages)} of PDF via OCR...")
+            print(f"OCR na página {i+1}/{len(pages)}...")
 
             ocr_config = r'-c preserve_interword_spaces=1 --oem 1 --psm 1'
             ocr_data = pytesseract.image_to_data(
@@ -152,26 +150,25 @@ def extract_text_ocr(pdf_path):
                 output_type=Output.DICT
             )
             df = pd.DataFrame(ocr_data)
-            # remove blocks with confidence -1 or blank text
+            # Filtra texto vazio ou com confiança -1
             df = df[(df.conf != '-1') & (df.text.str.strip() != '')]
             if df.empty:
                 continue
 
-            # group by block_num so we can reconstruct in reading order
+            # Agrupa por blocos para manter a sequência de leitura
             block_nums = df.groupby('block_num').first().sort_values('top').index.tolist()
 
             for block_num in block_nums:
                 block_df = df[df['block_num'] == block_num]
-                # optional: skip extremely short tokens
+                # Se quiser ignorar trechos muito curtos, pode filtrar aqui
                 filtered = block_df[block_df.text.str.len() > 2]
-
                 if filtered.empty:
                     continue
 
                 avg_char_width = (filtered.width / filtered.text.str.len()).mean()
                 prev_par, prev_line, prev_left = 0, 0, 0
 
-                for idx, line_data in block_df.iterrows():
+                for _, line_data in block_df.iterrows():
                     if prev_par != line_data['par_num']:
                         extracted_text += '\n'
                         prev_par = line_data['par_num']
@@ -183,7 +180,11 @@ def extract_text_ocr(pdf_path):
                         prev_left = 0
 
                     spaces_to_add = 0
-                    left_margin_chars = int(line_data['left']/avg_char_width) if avg_char_width else 0
+                    if avg_char_width:
+                        left_margin_chars = int(line_data['left'] / avg_char_width)
+                    else:
+                        left_margin_chars = 0
+
                     if left_margin_chars > prev_left + 1:
                         spaces_to_add = left_margin_chars - prev_left
                         extracted_text += ' ' * spaces_to_add
@@ -194,13 +195,12 @@ def extract_text_ocr(pdf_path):
                 extracted_text += '\n'
         return extracted_text
     except Exception as e:
-        print(f"Error processing PDF for OCR: {e}")
+        print(f"Erro durante o OCR: {e}")
         return ""
 
-
-# -----------------------------
-# MILVUS SETUP
-# -----------------------------
+# --------------------------------------------------------------------------------
+# CONFIGURAÇÃO E INSERÇÃO NO MILVUS
+# --------------------------------------------------------------------------------
 embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
 
 class EmbeddingFunctionWrapper:
@@ -236,6 +236,9 @@ store = Milvus(
 )
 
 def split_text(text, max_length=60000):
+    """
+    Separa o texto em partes, evitando blocos muito grandes para indexação.
+    """
     words = text.split()
     parts = []
     current_part = []
@@ -256,162 +259,175 @@ def split_text(text, max_length=60000):
 
 def store_text_parts_in_milvus(text_parts, pdf_file, execution_id):
     if not text_parts:
-        print("No text parts found! Skipping Milvus insertion.")
+        print("Nenhum bloco de texto encontrado, ignorando inserção no Milvus.")
         return
 
-    print(f"Number of text_parts: {len(text_parts)}")
+    print(f"Quantidade de blocos de texto: {len(text_parts)}")
     for i, part in enumerate(text_parts):
         metadata = {"source": pdf_file, "part": i, "execution_id": execution_id}
-        print(f"Inserting chunk #{i}, length {len(part)} chars")
+        print(f"Inserindo chunk #{i}, tamanho {len(part)} caracteres")
         store.add_texts([part], metadatas=[metadata])
 
+# --------------------------------------------------------------------------------
+# CARREGA TOKENIZER DO FALCON PARA CONTROLAR NÚMERO DE TOKENS
+# --------------------------------------------------------------------------------
+from transformers import AutoTokenizer
+tokenizer = AutoTokenizer.from_pretrained(FALCON_CHECKPOINT, trust_remote_code=True)
 
-# -----------------------------
-# LLM SETUP & QUERY
-# -----------------------------
+def count_tokens(text: str) -> int:
+    """
+    Calcula quantos tokens são gerados a partir de uma string com o tokenizer do Falcon.
+    """
+    tokens = tokenizer.encode(text, add_special_tokens=False)
+    return len(tokens)
+
+# --------------------------------------------------------------------------------
+# CONFIGURAÇÃO DO MODELO LLM
+# --------------------------------------------------------------------------------
 llm = ChatOpenAI(
     openai_api_key="EMPTY",
     openai_api_base=f"{INFERENCE_SERVER_URL}/v1",
     model_name=LLM_MODEL_NAME,
     top_p=0.92,
     temperature=0.01,
-#    max_tokens=1024,
     presence_penalty=1.03,
     streaming=True,
     callbacks=[StreamingStdOutCallbackHandler()]
 )
 
-def query_information(query, execution_id, file_identifier):
-    # We'll search for docs in Milvus that match the "execution_id" + "source"
-    # source is expected to be file_identifier_no_watermark.pdf if you used 
-    #    os.path.basename(output_pdf_path)
-    # but if you want it to be strictly "file_identifier.pdf", 
-    # make sure that is how you set metadata "source" above.
-    # In the code above, we do: "source": pdf_file
-    # and pdf_file is "18_01782176543_2023_2024_no_watermark.pdf"
-    # so you should adjust accordingly if needed.
+# --------------------------------------------------------------------------------
+# FUNÇÃO PARA QUEBRAR O TEXTO EM PARTES SEM ESTOURAR A JANELA DE CONTEXTO
+# --------------------------------------------------------------------------------
+def chunk_text_for_falcon(text, max_prompt_tokens=1800):
+    """
+    Fragmenta o texto para assegurar que, junto das instruções fixas,
+    o total não exceda 2048 tokens do Falcon. Ajuste se necessário.
+    """
+    words = text.split()
+    chunks = []
+    current_chunk = []
 
-    documents = store.search(
-        query=query, 
-        k=1, 
-        search_type="similarity", 
-        filter={
-            "execution_id": execution_id, 
-            "source": f"{file_identifier}_no_watermark.pdf"  # or .pdf if that is your stored metadata
-        }
+    for word in words:
+        tentative = " ".join(current_chunk + [word])
+        if count_tokens(tentative) <= max_prompt_tokens:
+            current_chunk.append(word)
+        else:
+            chunks.append(" ".join(current_chunk))
+            current_chunk = [word]
+
+    if current_chunk:
+        chunks.append(" ".join(current_chunk))
+
+    return chunks
+
+# --------------------------------------------------------------------------------
+# GERA UM TRECHO DE XML PARA CADA BLOCO DE TEXTO
+# --------------------------------------------------------------------------------
+def generate_xml_snippet(llm, chunk, file_identifier):
+    """
+    Solicita ao LLM um pedaço de XML referente apenas ao conteúdo do chunk.
+    """
+    system_prompt = (
+        "Você é um assistente de impostos capaz de gerar XML de bens/direitos com base no texto fornecido. "
+        "Analise somente o trecho que será passado e gere a parte do XML correspondente."
     )
 
-    if not documents:
-        print("No docs found in Milvus for that query/filter. Returning empty answer.")
-        return "No context found."
+    user_prompt = (
+        f"Trecho:\n{chunk}\n\n"
+        f"Crie o XML para os bens identificados nesse pedaço, seguindo o padrão usado em {file_identifier}, "
+        "sem adicionar explicações fora das tags."
+    )
 
-    context_parts = [doc.page_content for doc in documents]
-    context_combined = "\n".join(context_parts)
+    total_prompt = system_prompt + user_prompt
+    total_tokens = count_tokens(total_prompt)
+    if total_tokens > 2048:
+        raise ValueError(f"O prompt atual ultrapassa 2048 tokens (tem {total_tokens}). Ajuste o tamanho do chunk.")
 
     messages = [
-    SystemMessage(content=(
-        "Você é um assistente financeiro avançado, experiente com profundo conhecimento "
-        "em declaração de imposto de renda. Seu único objetivo é extrair informações do "
-        "contexto fornecido e gerar respostas no formato XML. NUNCA interrompa uma resposta "
-        "devido ao seu tamanho. Crie o XML com TODAS as informações pertinentes à sessão de "
-        "bens e direitos, respeitando TODOS seus atributos e todos seus detalhes."
-    )),
-
-    HumanMessage(content=(
-        f"{context_combined}\n\n"
-        "Quais são todos os bens e direitos declarados no arquivo "
-        f"{file_identifier}?"
-        " O resultado deve ser apresentado exclusivamente em XML com TODAS as características "
-        "e detalhes de cada um dos bens, conforme exemplos abaixo:\n\n"
-        "<?xml version=\"1.0\" ?>\n"
-        "<SECTION Name=\"DECLARACAO DE BENS E DIREITOS\">\n"
-        "    <TABLE>\n"
-        "        <ROW No=\"1\">\n"
-        "            <Field Name=\"GRUPO\" Value=\"01\"/>\n"
-        "            <Field Name=\"CODIGO\" Value=\"01\"/>\n"
-        "            <Field Name=\"DISCRIMINACAO\" Value=\"UT QUIS ALIQUAM LEO. DONEC ALIQUA\"/>\n"
-        "            <Field Name=\"SITUACAOANTERIOR\" Value=\"23.445,00\"/>\n"
-        "            <Field Name=\"SITUACAOATUAL\" Value=\"342.342,00\"/>\n"
-        "            <Field Name=\"InscricaoMunicipal(IPTU)\" Value=\"23423424\"/>\n"
-        "            <Field Name=\"Logradouro\" Value=\"RUA QUALQUER\"/>\n"
-        "            <Field Name=\"Numero\" Value=\"89\"/>\n"
-        "            <Field Name=\"Complemento\" Value=\"COMPLEM 2\"/>\n"
-        "            <Field Name=\"Bairro\" Value=\"BRASILIA\"/>\n"
-        "            <Field Name=\"Municipio\" Value=\"BRASÍLIA\"/>\n"
-        "            <Field Name=\"UF\" Value=\"DF\"/>\n"
-        "            <Field Name=\"CEP\" Value=\"1321587\"/>\n"
-        "            <Field Name=\"AreaTotal\" Value=\"345,0 m²\"/>\n"
-        "            <Field Name=\"DatadeAquisicao\" Value=\"12/12/1993\"/>\n"
-        "            <Field Name=\"RegistradonoCartorio\" Value=\"Sim\"/>\n"
-        "            <Field Name=\"NomeCartorio\" Value=\"CARTORIO DE SÇNJJKLCDF ASLK SAKÇK SAÇKLJ SAÇLKS\"/>\n"
-        "            <Field Name=\"Matricula\" Value=\"2344234\"/>\n"
-        "        </ROW>\n"
-        "    </TABLE>\n"
-        "</SECTION>\n\n"
-        "Certifique-se de que todos os bens e direitos, com suas respectivas caracteristicas, "
-        "estejam presentes no XML gerado, incluindo todos os valores, tais como SITUACAOANTERIOR "
-        "e SITUACAOATUAL. Se uma informacao nao estiver disponivel no contexto, deixe o campo vazio. "
-        "Use esse exemplo fornecido como referencia ao processar as informacoes fornecidas via contexto, "
-        "os próximos itens devem conter a mesma estrutra de xml, porem podem possuir campos diferentes, "
-        "cada conjunto de GRUPO e CODIGO representam uma categoria de item diferente, com diferentes "
-        "caracteristicas. TODAS AS CARACTERISTICAS SAO IMPORTANTES E DEVEM ESTAR PRESENTES NO XML, "
-        "alguns exemplos incluem mas nao se limitam a: RENAVAM, RegistrodeEmbarcacao, RegistrodeAeronave, "
-        "CPF, CNPJ, NegociadosemBolsa, Bemoudireitopertencenteao, Titular, Conta, Agencia, Banco, e etc. "
-        "alguns desses itens podem estar presentes, ou não estar presentes de acordo com sua categoria, "
-        "determinada pelo grupo e codigo, porem todos os itens devem possuir SITUACAOANTERIOR e "
-        "SITUACAOATUAL informados no formato de data, conforme exemplo SITUACAO EM 31/12/2021 , "
-        "SITUACAO EM 31/12/2022. a data da SITUACAOANTERIOR sera sempre anterior a data da SITUACAOATUAL, "
-        "o que nao significa ser a data de hoje, porem mais recente que a data anterior.\n"
-    ))
-]
-
-
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=user_prompt)
+    ]
     response = llm.predict_messages(messages)
-    return response.content
+    snippet = response.content.strip()
 
-# -----------------------------
-# MAIN PIPELINE
-# -----------------------------
+    # Remove possíveis fences de markdown
+    if snippet.startswith("```"):
+        snippet = snippet.lstrip("```").strip()
+    if snippet.endswith("```"):
+        snippet = snippet.rstrip("```").strip()
+
+    return snippet
+
+# --------------------------------------------------------------------------------
+# FUNÇÕES PARA LIMPEZA E UNIÃO DOS FRAGMENTOS DE XML
+# --------------------------------------------------------------------------------
+def clean_snippet_for_merge(snippet_xml: str) -> str:
+    """
+    Tira declarações de XML e tags <SECTION> para facilitar a fusão posterior.
+    """
+    snippet_xml = re.sub(r'<\?xml.*?\?>', '', snippet_xml, flags=re.IGNORECASE)
+    snippet_xml = re.sub(r'<SECTION.*?>', '', snippet_xml, flags=re.IGNORECASE)
+    snippet_xml = re.sub(r'</SECTION>', '', snippet_xml, flags=re.IGNORECASE)
+    return snippet_xml.strip()
+
+def merge_snippets(snippets):
+    """
+    Concatena vários trechos de XML em uma só <SECTION>, evitando duplicações.
+    """
+    merged_rows = []
+    for snip in snippets:
+        inner = clean_snippet_for_merge(snip)
+        merged_rows.append(inner)
+
+    final_xml = """<?xml version="1.0" ?>
+<SECTION Name="DECLARACAO DE BENS E DIREITOS">
+{rows}
+</SECTION>
+""".format(rows="\n".join(merged_rows))
+
+    return final_xml
+
+# --------------------------------------------------------------------------------
+# FLUXO PRINCIPAL
+# --------------------------------------------------------------------------------
 def main():
-    # 1) OCR Extract
+    # 1) Executa OCR
     text = extract_text_ocr(output_pdf_path)
-    print(f"\nExtracted text length: {len(text)} characters.\n")
+    print(f"\nTamanho do texto extraído: {len(text)} caracteres.\n")
 
-    # 2) Split and store in Milvus
+    # 2) Cria blocos grandes para indexação no Milvus (opcional)
     text_parts = split_text(text)
     store_text_parts_in_milvus(text_parts, os.path.basename(output_pdf_path), execution_id)
-    print("\nPDF processed and stored in Milvus successfully.")
+    print("\nPDF processado e inserido no Milvus.")
 
-    # 3) Query LLM
-    query = (
-      f"Quais são todos os bens e direitos suas informações, seus atributos e detalhes, "
-      f"declarados no arquivo {file_identifier}? Não interrompa a resposta devido ao seu tamanho, "
-      f"forneça a resposta com todo o contexto que tiver. "
-      f"Valores monetarios devem estar em portugues do brasil, moeda real brl."
-    )
-    llm_result = query_information(query, execution_id, file_identifier)
+    # 3) Divide o texto para garantir que o LLM não exceda o limite de contexto
+    chunks_for_llm = chunk_text_for_falcon(text, max_prompt_tokens=1800)
+    print(f"Quantidade de partes a serem processadas pelo LLM: {len(chunks_for_llm)}\n")
 
-    # 4) Clean up possible markdown fences
-    result = llm_result.strip()
-    if result.startswith("```xml"):
-        result = result[6:]
-    if result.endswith("```"):
-        result = result[:-3]
+    # 4) Processa cada trecho e gera um snippet de XML
+    xml_snippets = []
+    for i, chunk in enumerate(chunks_for_llm, start=1):
+        print(f"[Trecho {i}/{len(chunks_for_llm)}] tokens: {count_tokens(chunk)}")
+        snippet = generate_xml_snippet(llm, chunk, file_identifier)
+        xml_snippets.append(snippet)
 
-    # 5) Save local XML
+    # 5) Combina todos os fragmentos num XML final
+    final_xml = merge_snippets(xml_snippets)
+
+    # 6) Salva o arquivo XML localmente
     xml_file_name = f"./{file_identifier}.xml"
     with open(xml_file_name, "w", encoding="utf-8") as f:
-        f.write(result)
-    print(f"File {xml_file_name} has been successfully saved.")
+        f.write(final_xml)
+    print(f"Arquivo {xml_file_name} criado com sucesso.")
 
-    # 6) Upload XML to MinIO
+    # 7) Sobe o XML no MinIO
     upload_object_name = f"{file_identifier}.xml"
     bucket_name = "irpf-xml"
     try:
         client.fput_object(bucket_name, upload_object_name, xml_file_name)
-        print(f"'{upload_object_name}' successfully uploaded to bucket '{bucket_name}'.")
+        print(f"'{upload_object_name}' enviado para o bucket '{bucket_name}'.")
     except S3Error as e:
-        print("Error occurred while uploading XML:", e)
+        print("Erro ao subir o XML:", e)
 
 if __name__ == "__main__":
     main()
