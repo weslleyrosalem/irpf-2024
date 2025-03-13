@@ -18,16 +18,16 @@ from minio.error import S3Error
 
 from sentence_transformers import SentenceTransformer
 from langchain_community.vectorstores import Milvus
-
-# Usando a classe OpenAI do LangChain para conversar com /v1/completions
 from langchain.llms import OpenAI
 
 import requests
 
+from transformers import AutoTokenizer
+
 # ------------------------------------------------------------------------------
-# CONFIGURAÇÕES BÁSICAS DO SISTEMA
+# CONFIGURAÇÕES BÁSICAS
 # ------------------------------------------------------------------------------
-AWS_S3_ENDPOINT = "minio-api-minio.apps.cluster-lqsm2.lqsm2.sandbox441.opentlc.com"
+AWS_S3_ENDPOINT = "minio-api-minio.apps.cluster-mx7zs.mx7zs.sandbox2523.opentlc.com"
 AWS_ACCESS_KEY_ID = "minio"
 AWS_SECRET_ACCESS_KEY = "minio123"
 AWS_S3_BUCKET = "irpf-files"
@@ -38,14 +38,10 @@ MILVUS_USERNAME = "root"
 MILVUS_PASSWORD = "Milvus"
 MILVUS_COLLECTION = "irpf"
 
-# Informações do endpoint de inferência, que aceita chamadas em /v1/completions
-INFERENCE_SERVER_URL = "http://falcon-40b-instruct-service.vllm.svc.cluster.local:8080"
+INFERENCE_SERVER_URL = "http://falcon-40b-instruct-service.kserve-demo.svc.cluster.local:8080"
 LLM_MODEL_NAME = "falcon-40b-instruct"
-
-# Usado para tokenização (cálculo de tokens)
 FALCON_CHECKPOINT = "tiiuae/falcon-40b-instruct"
 
-# Configuração para conexão com o MinIO
 http_client = urllib3.PoolManager(timeout=urllib3.Timeout(connect=5.0, read=10.0))
 client = Minio(
     AWS_S3_ENDPOINT,
@@ -55,12 +51,7 @@ client = Minio(
     http_client=http_client
 )
 
-# Se uma variável de ambiente "file_identifier" estiver definida, uso ela; caso contrário, uso "joao-2023"
 file_identifier = os.getenv('file_identifier', "joao-2023")
-if not file_identifier:
-    print("Erro: a variável de ambiente file_identifier não está configurada.")
-    sys.exit(1)
-
 execution_id = str(uuid.uuid4())
 
 object_name = f"{file_identifier}.pdf"
@@ -81,20 +72,15 @@ except S3Error as e:
 # FUNÇÃO PARA REMOVER MARCA D'ÁGUA E IMAGENS DO PDF
 # ------------------------------------------------------------------------------
 def remove_watermark_advanced(pdf_path, output_path):
-    """
-    Aqui removo todas as imagens de cada página e oculto qualquer anotação
-    que tenha 'Watermark' como título. Use com cuidado, pois o PDF pode ser
-    todo em imagem.
-    """
     doc = fitz.open(pdf_path)
     for page in doc:
-        # Apago todas as imagens da página
+        # Apagar imagens
         image_list = page.get_images(full=True)
         for img in image_list:
             xref = img[0]
             page.delete_image(xref)
 
-        # Se a anotação tiver "Watermark" no título, ela é ocultada
+        # Esconder anotações "Watermark"
         annots = page.annots()
         if annots:
             for annot in annots:
@@ -105,19 +91,14 @@ def remove_watermark_advanced(pdf_path, output_path):
         page.apply_redactions()
 
     doc.save(output_path)
-    print(f"Foram removidas marcas d'água e imagens. Novo arquivo: {output_path}")
+    print(f"Arquivo PDF pós-remoção de marca d'água gerado em: {output_path}")
 
-# Remover as imagens e possíveis marcas d'água
 remove_watermark_advanced(file_path, output_pdf_path)
 
 # ------------------------------------------------------------------------------
-# APLICAÇÃO DE OCR NO PDF
+# OCR
 # ------------------------------------------------------------------------------
 def extract_text_ocr(pdf_path):
-    """
-    Converte cada página em imagem e extrai texto via Tesseract.
-    Se o PDF já tiver texto embutido, talvez seja melhor extrair via fitz.
-    """
     extracted_text = ""
     if not os.path.exists(pdf_path):
         print(f"O arquivo {pdf_path} não existe.")
@@ -126,9 +107,7 @@ def extract_text_ocr(pdf_path):
     try:
         pages = convert_from_path(pdf_path)
         for i, page_img in enumerate(pages):
-            print(f"Realizando OCR da página {i+1}/{len(pages)}...")
-
-            ocr_config = r'-c preserve_interword_spaces=1 --oem 1 --psm 1'
+            ocr_config = r'-c preserve_interword_spaces=1 --oem 1 --psm 3'
             ocr_data = pytesseract.image_to_data(
                 page_img,
                 lang='por',
@@ -136,21 +115,14 @@ def extract_text_ocr(pdf_path):
                 output_type=Output.DICT
             )
             df = pd.DataFrame(ocr_data)
-
-            # Filtra qualquer linha de texto inválida
-            df = df[(df.conf != '-1') & (df.text.str.strip() != '')]
+            df = df[(df.conf != '-1') & (df.text.str.strip() != '') & (df.conf.astype(float) > 50)]
             if df.empty:
                 continue
 
-            # Agrupo por bloco para manter a ordem original
             block_nums = df.groupby('block_num').first().sort_values('top').index.tolist()
             for block_num in block_nums:
                 block_df = df[df['block_num'] == block_num]
-                filtered = block_df[block_df.text.str.len() > 2]
-                if filtered.empty:
-                    continue
-
-                avg_char_width = (filtered.width / filtered.text.str.len()).mean()
+                avg_char_width = (block_df.width / block_df.text.str.len()).mean() if not block_df.empty else 0
                 prev_par, prev_line, prev_left = 0, 0, 0
 
                 for _, line_data in block_df.iterrows():
@@ -184,24 +156,21 @@ def extract_text_ocr(pdf_path):
         return ""
 
 # ------------------------------------------------------------------------------
-# PREPARAÇÃO PARA O MILVUS
+# Indexação no Milvus (opcional)
 # ------------------------------------------------------------------------------
-embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-
 class EmbeddingFunctionWrapper:
     def __init__(self, model):
         self.model = model
 
     def embed_query(self, query):
         emb = self.model.encode(query)
-        logging.debug(f"embed_query shape: {emb.shape}")
         return emb
 
     def embed_documents(self, docs):
         emb = self.model.encode(docs)
-        logging.debug(f"embed_documents shape: {emb.shape}")
         return emb
 
+embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
 embedding_function = EmbeddingFunctionWrapper(embedding_model)
 
 store = Milvus(
@@ -221,9 +190,6 @@ store = Milvus(
 )
 
 def split_text(text, max_length=60000):
-    """
-    Aqui vou dividir o texto em pedaços para não sobrecarregar o Milvus.
-    """
     words = text.split()
     parts = []
     current_part = []
@@ -243,9 +209,6 @@ def split_text(text, max_length=60000):
     return parts
 
 def store_text_parts_in_milvus(text_parts, pdf_file, execution_id):
-    """
-    Envio dos blocos de texto para o Milvus, mantendo um metadado simples.
-    """
     if not text_parts:
         print("Não há blocos de texto para inserir no Milvus.")
         return
@@ -253,41 +216,42 @@ def store_text_parts_in_milvus(text_parts, pdf_file, execution_id):
     print(f"Número de blocos de texto: {len(text_parts)}")
     for i, part in enumerate(text_parts):
         metadata = {"source": pdf_file, "part": i, "execution_id": execution_id}
-        print(f"Inserindo bloco #{i}, com tamanho de {len(part)} caracteres.")
         store.add_texts([part], metadatas=[metadata])
 
-# ------------------------------------------------------------------------------
-# USO DO TOKENIZER DO FALCON PARA CALCULAR QUANTIDADE DE TOKENS
-# ------------------------------------------------------------------------------
-from transformers import AutoTokenizer
+# ----------------------------------------------------------------------------
+# Tokenizer do Falcon para contagem
+# ----------------------------------------------------------------------------
 tokenizer = AutoTokenizer.from_pretrained(FALCON_CHECKPOINT, trust_remote_code=True)
 
 def count_tokens(text: str) -> int:
-    """
-    Uso o tokenizer do Falcon para saber quantos tokens existem no texto.
-    """
+    # Só para referência de chunking
     tokens = tokenizer.encode(text, add_special_tokens=False)
     return len(tokens)
 
-# ------------------------------------------------------------------------------
-# CONFIGURAÇÃO DO MODELO (USANDO OPENAI PARA /v1/completions)
-# ------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
+# Ajustar o LLM (passo importante: max_tokens!)
+# ----------------------------------------------------------------------------
 llm = OpenAI(
-    openai_api_key="EMPTY",  # Aqui pode ser algo fictício, caso o endpoint não exija key
+    openai_api_key="EMPTY",  
     openai_api_base=f"{INFERENCE_SERVER_URL}/v1",
     model_name=LLM_MODEL_NAME,
-    streaming=False,  # Ajuste se o seu endpoint der suporte a streaming
+    streaming=False,
     temperature=0.01,
     top_p=0.92,
-    presence_penalty=1.03
+    presence_penalty=1.03,
+    # AQUI definimos quantos tokens de RESPOSTA (max_tokens) esperamos.
+    # Ajuste conforme o endpoint do Falcon permitir (ex: 2048, 4096...).
+    max_tokens=1000
 )
 
-# ------------------------------------------------------------------------------
-# DIVISÃO DO TEXTO EM PARTES MENORES PARA O LLM
-# ------------------------------------------------------------------------------
-def chunk_text_for_falcon(text, max_prompt_tokens=1800):
+# ----------------------------------------------------------------------------
+# Dividir texto em chunks p/ LLM
+# ----------------------------------------------------------------------------
+def chunk_text_for_falcon(text, max_prompt_tokens=600):
     """
-    Quebro o texto em sub-blocos para não exceder limite de contexto.
+    Divide o texto em blocos tais que, ao somar o texto e o prompt,
+    não corra risco de truncamento. max_prompt_tokens aqui é
+    só do CHUNK; o prompt principal também gasta tokens.
     """
     words = text.split()
     chunks = []
@@ -306,32 +270,47 @@ def chunk_text_for_falcon(text, max_prompt_tokens=1800):
 
     return chunks
 
-# ------------------------------------------------------------------------------
-# FUNÇÃO PARA GERAR TRECHO DE XML PARA CADA SUB-BLOCO
-# ------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
+# Função para gerar snippet XML a partir de um chunk
+# ----------------------------------------------------------------------------
 def generate_xml_snippet(llm, chunk, file_identifier):
-    """
-    Fazemos um único prompt, já que estamos usando /v1/completions (OpenAI).
-    """
     system_prompt = (
-        "Você é um assistente de impostos que cria XML de bens/direitos a partir do texto dado.\n"
-        "Use somente o trecho que vou fornecer para criar esse XML.\n\n"
-    )
-    user_prompt = (
-        f"Trecho:\n{chunk}\n\n"
-        f"Por favor, gere o XML que corresponde aos bens encontrados aqui, "
-        f"baseado no padrão do arquivo {file_identifier}, sem incluir explicações fora das tags."
+        "Você é um assistente especializado em declaração de Imposto de Renda, "
+        "capaz de extrair dados de bens e direitos a partir do texto fornecido. "
+        "Retorne SOMENTE o XML, sem explicações adicionais. "
+        "Se faltarem dados, deixe o campo vazio. NÃO interrompa o XML."
     )
 
-    full_prompt = system_prompt + user_prompt
-    total_tokens = count_tokens(full_prompt)
-    if total_tokens > 2048:
-        raise ValueError(f"O prompt tem {total_tokens} tokens, excedendo o limite de 2048. "
-                         "Diminua o tamanho no chunk_text_for_falcon.")
+    user_prompt = (
+        f"Trecho do documento:\n{chunk}\n\n"
+        "Gere um XML que represente os bens encontrados. Use a estrutura abaixo como base:\n\n"
+        "<?xml version=\"1.0\"?>\n"
+        "<SECTION Name=\"DECLARACAO DE BENS E DIREITOS\">\n"
+        "    <TABLE>\n"
+        "        <ROW No=\"1\">\n"
+        "            <Field Name=\"GRUPO\" Value=\"\"/>\n"
+        "            <Field Name=\"CODIGO\" Value=\"\"/>\n"
+        "            <Field Name=\"DISCRIMINACAO\" Value=\"\"/>\n"
+        "            <Field Name=\"SITUACAOANTERIOR\" Value=\"\"/>\n"
+        "            <Field Name=\"SITUACAOATUAL\" Value=\"\"/>\n"
+        "            <!-- Adicione mais fields se necessário -->\n"
+        "        </ROW>\n"
+        "    </TABLE>\n"
+        "</SECTION>\n\n"
+        "Incorpore TODOS os bens do trecho no XML. Caso algum dado esteja ausente, deixe vazio. "
+        "Não retorne qualquer texto além do XML final."
+    )
+
+    full_prompt = system_prompt + "\n\n" + user_prompt
+
+    # >>> Se quisermos, podemos remover este check ou aumentar o limite <<<
+    # total_tokens = count_tokens(full_prompt)
+    # if total_tokens > 2048:
+    #     raise ValueError(f"Prompt estourou 2048 tokens (={total_tokens}). Ajuste a chunkagem!")
 
     snippet = llm(full_prompt).strip()
 
-    # Remoção de possíveis cercas do Markdown
+    # Remoção de cercas de Markdown
     if snippet.startswith("```"):
         snippet = snippet.lstrip("```").strip()
     if snippet.endswith("```"):
@@ -339,70 +318,67 @@ def generate_xml_snippet(llm, chunk, file_identifier):
 
     return snippet
 
-# ------------------------------------------------------------------------------
-# FUNÇÕES PARA LIMPEZA E UNIÃO DOS FRAGMENTOS DE XML
-# ------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
+# Limpeza e união dos fragmentos de XML
+# ----------------------------------------------------------------------------
 def clean_snippet_for_merge(snippet_xml: str) -> str:
-    """
-    Vou remover declarações de XML e tags <SECTION> para unir tudo num só bloco depois.
-    """
+    # Remove possíveis declarações e tags de SECTION para unificar
     snippet_xml = re.sub(r'<\?xml.*?\?>', '', snippet_xml, flags=re.IGNORECASE)
     snippet_xml = re.sub(r'<SECTION.*?>', '', snippet_xml, flags=re.IGNORECASE)
     snippet_xml = re.sub(r'</SECTION>', '', snippet_xml, flags=re.IGNORECASE)
     return snippet_xml.strip()
 
 def merge_snippets(snippets):
-    """
-    Uno todos os pedaços de XML em um único <SECTION>.
-    """
     merged_rows = []
     for snip in snippets:
-        inner = clean_snippet_for_merge(snip)
-        merged_rows.append(inner)
+        if snip.strip():
+            merged_rows.append(clean_snippet_for_merge(snip))
 
-    final_xml = """<?xml version="1.0" ?>
-<SECTION Name="DECLARACAO DE BENS E DIREITOS">
-{rows}
-</SECTION>
-""".format(rows="\n".join(merged_rows))
-
+    joined_rows = "\n".join(merged_rows)
+    final_xml = (
+        "<?xml version=\"1.0\" ?>\n"
+        "<SECTION Name=\"DECLARACAO DE BENS E DIREITOS\">\n"
+        + joined_rows + "\n"
+        "</SECTION>\n"
+    )
     return final_xml
 
 # ------------------------------------------------------------------------------
-# FLUXO PRINCIPAL DO SCRIPT
+# MAIN
 # ------------------------------------------------------------------------------
 def main():
-    # 1) Passo: extrair texto do PDF (após remoção das marcas d'água)
+    # 1) OCR
     text = extract_text_ocr(output_pdf_path)
     print(f"\nTexto extraído tem {len(text)} caracteres.\n")
 
-    # 2) (Opcional) quebro o texto em partes grandes e indexo no Milvus
+    # 2) Indexar no Milvus
     text_parts = split_text(text)
     store_text_parts_in_milvus(text_parts, os.path.basename(output_pdf_path), execution_id)
     print("Inserção no Milvus concluída.")
 
-    # 3) Divido o texto em blocos que caibam no contexto do modelo
-    chunks_for_llm = chunk_text_for_falcon(text, max_prompt_tokens=1800)
+    # 3) Dividir em chunks para LLM
+    chunks_for_llm = chunk_text_for_falcon(text, max_prompt_tokens=600)
     print(f"Número de blocos para o LLM: {len(chunks_for_llm)}\n")
 
-    # 4) Para cada bloco, gero um snippet de XML
+    # 4) Gera XML parcial para cada bloco
     xml_snippets = []
     for i, chunk in enumerate(chunks_for_llm, start=1):
         token_count = count_tokens(chunk)
-        print(f"Processando bloco {i}/{len(chunks_for_llm)}. Tokens: {token_count}")
+        print(f"Processando bloco {i}/{len(chunks_for_llm)}. Tokens no chunk: {token_count}")
         snippet = generate_xml_snippet(llm, chunk, file_identifier)
         xml_snippets.append(snippet)
 
-    # 5) Combino todos os trechos de XML num só arquivo final
+    # 5) Une tudo
     final_xml = merge_snippets(xml_snippets)
 
-    # 6) Gravo o XML em um arquivo
+    # 6) Salva local
     xml_file_name = f"./{file_identifier}.xml"
     with open(xml_file_name, "w", encoding="utf-8") as f:
         f.write(final_xml)
-    print(f"XML salvo em: {xml_file_name}")
 
-    # 7) Envio o arquivo para o bucket 'irpf-xml' no MinIO
+    print(f"XML gerado e salvo em: {xml_file_name}")
+
+    # 7) Upload ao MinIO (bucket 'irpf-xml')
     upload_object_name = f"{file_identifier}.xml"
     bucket_name = "irpf-xml"
     try:
