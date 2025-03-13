@@ -356,13 +356,13 @@ def main():
     print(f"File {file_name} has been successfully saved.")
 
     # Upload do XML de volta ao MinIO
-    upload_object_name = f"{file_identifier}.xml"
-    bucket_name = "ai-bucket-rosa-hml"
+    object_name = f"{file_identifier}.xml"
+    bucket_name = 'ai-bucket-rosa-hml'
     try:
-        client.fput_object(bucket_name, upload_object_name, xml_file_name)
-        print(f"'{upload_object_name}' successfully uploaded to bucket '{bucket_name}'.")
+        client.fput_object(bucket_name, object_name, file_name)
+        print(f"'{object_name}' successfully uploaded to '{bucket_name}'.")
     except S3Error as e:
-        print("Error occurred while uploading XML:", e)
+        print("Error occurred: ", e)
 
 if __name__ == "__main__":
     main()
