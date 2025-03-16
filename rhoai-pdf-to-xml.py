@@ -20,7 +20,7 @@ from langchain.chat_models import ChatOpenAI
 from langchain.schema import SystemMessage, HumanMessage
 
 # Configurações de logging
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+LOG_LEVEL = os.getenv("LOG_LEVEL", "DEBUG").upper()
 logging.basicConfig(level=LOG_LEVEL)
 
 # ==============================
