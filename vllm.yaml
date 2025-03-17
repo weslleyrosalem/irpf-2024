@@ -1,0 +1,331 @@
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  annotations:
+    deployment.kubernetes.io/revision: '5'
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{},"labels":{"app":"vllm","component":"vllm"},"name":"vllm","namespace":"vllm"},"spec":{"progressDeadlineSeconds":600,"replicas":1,"revisionHistoryLimit":10,"selector":{"matchLabels":{"app":"vllm","component":"vllm"}},"strategy":{"type":"Recreate"},"template":{"metadata":{"creationTimestamp":null,"labels":{"app":"vllm","component":"vllm"}},"spec":{"affinity":{},"containers":[{"args":["--model","mistralai/Mistral-7B-Instruct-v0.2","--download-dir","/models-cache","--dtype","float16","--max-model-len","6144"],"env":[{"name":"HUGGING_FACE_HUB_TOKEN","value":""}],"image":"quay.io/rh-aiservices-bu/vllm-openai-ubi9:0.4.2","imagePullPolicy":"IfNotPresent","livenessProbe":{"failureThreshold":3,"httpGet":{"path":"/health","port":"http","scheme":"HTTP"},"periodSeconds":100,"successThreshold":1,"timeoutSeconds":8},"name":"server","ports":[{"containerPort":8000,"name":"http","protocol":"TCP"}],"readinessProbe":{"failureThreshold":3,"httpGet":{"path":"/health","port":"http","scheme":"HTTP"},"periodSeconds":30,"successThreshold":1,"timeoutSeconds":5},"resources":{"limits":{"cpu":"8","memory":"24Gi","nvidia.com/gpu":"1"},"requests":{"cpu":"6"}},"securityContext":{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]},"runAsNonRoot":true,"seccompProfile":{"type":"RuntimeDefault"}},"startupProbe":{"failureThreshold":24,"httpGet":{"path":"/health","port":"http","scheme":"HTTP"},"periodSeconds":30,"successThreshold":1,"timeoutSeconds":1},"terminationMessagePath":"/dev/termination-log","terminationMessagePolicy":"File","volumeMounts":[{"mountPath":"/models-cache","name":"models-cache"},{"mountPath":"/dev/shm","name":"shm"}]}],"dnsPolicy":"ClusterFirst","restartPolicy":"Always","schedulerName":"default-scheduler","securityContext":{},"terminationGracePeriodSeconds":120,"tolerations":[{"effect":"NoSchedule","key":"nvidia.com/gpu","operator":"Exists"}],"volumes":[{"name":"models-cache","persistentVolumeClaim":{"claimName":"vllm-models-cache"}},{"emptyDir":{"medium":"Memory","sizeLimit":"1Gi"},"name":"shm"}]}}}}
+  resourceVersion: '20675482'
+  name: vllm
+  uid: 68c38f75-0f04-4026-b4d5-f33207362d79
+  creationTimestamp: '2025-03-14T14:06:40Z'
+  generation: 9
+  managedFields:
+    - manager: kubectl-client-side-apply
+      operation: Update
+      apiVersion: apps/v1
+      time: '2025-03-14T14:06:40Z'
+      fieldsType: FieldsV1
+      fieldsV1:
+        'f:metadata':
+          'f:annotations':
+            .: {}
+            'f:kubectl.kubernetes.io/last-applied-configuration': {}
+          'f:labels':
+            .: {}
+            'f:app': {}
+            'f:component': {}
+        'f:spec':
+          'f:progressDeadlineSeconds': {}
+          'f:revisionHistoryLimit': {}
+          'f:selector': {}
+          'f:strategy':
+            'f:type': {}
+          'f:template':
+            'f:metadata':
+              'f:labels':
+                .: {}
+                'f:app': {}
+                'f:component': {}
+            'f:spec':
+              'f:volumes':
+                .: {}
+                'k:{"name":"models-cache"}':
+                  .: {}
+                  'f:name': {}
+                  'f:persistentVolumeClaim':
+                    .: {}
+                    'f:claimName': {}
+                'k:{"name":"shm"}':
+                  .: {}
+                  'f:emptyDir':
+                    .: {}
+                    'f:medium': {}
+                  'f:name': {}
+              'f:containers':
+                'k:{"name":"server"}':
+                  'f:startupProbe':
+                    .: {}
+                    'f:httpGet':
+                      .: {}
+                      'f:path': {}
+                      'f:port': {}
+                      'f:scheme': {}
+                    'f:successThreshold': {}
+                  'f:volumeMounts':
+                    .: {}
+                    'k:{"mountPath":"/dev/shm"}':
+                      .: {}
+                      'f:mountPath': {}
+                      'f:name': {}
+                    'k:{"mountPath":"/models-cache"}':
+                      .: {}
+                      'f:mountPath': {}
+                      'f:name': {}
+                  'f:terminationMessagePolicy': {}
+                  .: {}
+                  'f:resources':
+                    .: {}
+                    'f:limits': {}
+                    'f:requests':
+                      .: {}
+                      'f:cpu': {}
+                  'f:livenessProbe':
+                    .: {}
+                    'f:failureThreshold': {}
+                    'f:httpGet':
+                      .: {}
+                      'f:path': {}
+                      'f:port': {}
+                      'f:scheme': {}
+                    'f:periodSeconds': {}
+                    'f:successThreshold': {}
+                    'f:timeoutSeconds': {}
+                  'f:env':
+                    .: {}
+                    'k:{"name":"HUGGING_FACE_HUB_TOKEN"}':
+                      .: {}
+                      'f:name': {}
+                  'f:readinessProbe':
+                    .: {}
+                    'f:failureThreshold': {}
+                    'f:httpGet':
+                      .: {}
+                      'f:path': {}
+                      'f:port': {}
+                      'f:scheme': {}
+                    'f:periodSeconds': {}
+                    'f:successThreshold': {}
+                    'f:timeoutSeconds': {}
+                  'f:securityContext':
+                    .: {}
+                    'f:allowPrivilegeEscalation': {}
+                    'f:capabilities':
+                      .: {}
+                      'f:drop': {}
+                    'f:runAsNonRoot': {}
+                    'f:seccompProfile':
+                      .: {}
+                      'f:type': {}
+                  'f:terminationMessagePath': {}
+                  'f:imagePullPolicy': {}
+                  'f:ports':
+                    .: {}
+                    'k:{"containerPort":8000,"protocol":"TCP"}':
+                      .: {}
+                      'f:containerPort': {}
+                      'f:name': {}
+                      'f:protocol': {}
+                  'f:name': {}
+              'f:dnsPolicy': {}
+              'f:tolerations': {}
+              'f:restartPolicy': {}
+              'f:schedulerName': {}
+              'f:terminationGracePeriodSeconds': {}
+              'f:securityContext': {}
+              'f:affinity': {}
+    - manager: Mozilla
+      operation: Update
+      apiVersion: apps/v1
+      time: '2025-03-14T14:53:12Z'
+      fieldsType: FieldsV1
+      fieldsV1:
+        'f:spec':
+          'f:template':
+            'f:spec':
+              'f:containers':
+                'k:{"name":"server"}':
+                  'f:args': {}
+                  'f:env':
+                    'k:{"name":"HUGGING_FACE_HUB_TOKEN"}':
+                      'f:value': {}
+                  'f:image': {}
+                  'f:resources':
+                    'f:limits':
+                      'f:cpu': {}
+                      'f:memory': {}
+                      'f:nvidia.com/gpu': {}
+                    'f:requests':
+                      'f:nvidia.com/gpu': {}
+                  'f:startupProbe':
+                    'f:failureThreshold': {}
+                    'f:periodSeconds': {}
+                    'f:timeoutSeconds': {}
+              'f:volumes':
+                'k:{"name":"shm"}':
+                  'f:emptyDir':
+                    'f:sizeLimit': {}
+    - manager: kube-controller-manager
+      operation: Update
+      apiVersion: apps/v1
+      time: '2025-03-14T15:12:24Z'
+      fieldsType: FieldsV1
+      fieldsV1:
+        'f:metadata':
+          'f:annotations':
+            'f:deployment.kubernetes.io/revision': {}
+        'f:status':
+          'f:availableReplicas': {}
+          'f:conditions':
+            .: {}
+            'k:{"type":"Available"}':
+              .: {}
+              'f:lastTransitionTime': {}
+              'f:lastUpdateTime': {}
+              'f:message': {}
+              'f:reason': {}
+              'f:status': {}
+              'f:type': {}
+            'k:{"type":"Progressing"}':
+              .: {}
+              'f:lastTransitionTime': {}
+              'f:lastUpdateTime': {}
+              'f:message': {}
+              'f:reason': {}
+              'f:status': {}
+              'f:type': {}
+          'f:observedGeneration': {}
+          'f:readyReplicas': {}
+          'f:replicas': {}
+          'f:updatedReplicas': {}
+      subresource: status
+  namespace: vllm
+  labels:
+    app: vllm
+    component: vllm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vllm
+      component: vllm
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: vllm
+        component: vllm
+    spec:
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      affinity: {}
+      terminationGracePeriodSeconds: 120
+      securityContext: {}
+      containers:
+        - resources:
+            limits:
+              cpu: '32'
+              memory: 300Gi
+              nvidia.com/gpu: '4'
+            requests:
+              cpu: '6'
+              nvidia.com/gpu: '4'
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+              scheme: HTTP
+            timeoutSeconds: 5
+            periodSeconds: 30
+            successThreshold: 1
+            failureThreshold: 3
+          terminationMessagePath: /dev/termination-log
+          name: server
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+              scheme: HTTP
+            timeoutSeconds: 8
+            periodSeconds: 100
+            successThreshold: 1
+            failureThreshold: 3
+          env:
+            - name: HUGGING_FACE_HUB_TOKEN
+              value: hf_
+          securityContext:
+            capabilities:
+              drop:
+                - ALL
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            seccompProfile:
+              type: RuntimeDefault
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          imagePullPolicy: IfNotPresent
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+              scheme: HTTP
+            timeoutSeconds: 3
+            periodSeconds: 60
+            successThreshold: 1
+            failureThreshold: 50
+          volumeMounts:
+            - name: models-cache
+              mountPath: /models-cache
+            - name: shm
+              mountPath: /dev/shm
+          terminationMessagePolicy: File
+          image: 'quay.io/wrosalem/vllm-openai-ubi9:latest'
+          args:
+            - '--model'
+            - meta-llama/Llama-3.3-70B-Instruct
+            - '--download-dir'
+            - /models-cache
+            - '--dtype'
+            - float16
+            - '--tensor-parallel-size=4'
+            - '--trust-remote-code'
+            - '--max-model-len'
+            - '64000'
+      volumes:
+        - name: models-cache
+          persistentVolumeClaim:
+            claimName: vllm-models-cache
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 80Gi
+      dnsPolicy: ClusterFirst
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+  strategy:
+    type: Recreate
+  revisionHistoryLimit: 10
+  progressDeadlineSeconds: 600
+status:
+  observedGeneration: 9
+  replicas: 1
+  updatedReplicas: 1
+  readyReplicas: 1
+  availableReplicas: 1
+  conditions:
+    - type: Progressing
+      status: 'True'
+      lastUpdateTime: '2025-03-14T14:53:12Z'
+      lastTransitionTime: '2025-03-14T14:06:40Z'
+      reason: NewReplicaSetAvailable
+      message: ReplicaSet "vllm-6d9cf4ccf7" has successfully progressed.
+    - type: Available
+      status: 'True'
+      lastUpdateTime: '2025-03-14T15:12:24Z'
+      lastTransitionTime: '2025-03-14T15:12:24Z'
+      reason: MinimumReplicasAvailable
+      message: Deployment has minimum availability.
