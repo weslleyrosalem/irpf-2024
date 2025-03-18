@@ -226,7 +226,7 @@ def extract_partial_xml_from_chunk(chunk_text: str) -> str:
                 "  - Para outros tipos, inclua os campos pertinentes conforme as informações extraídas.\n\n"
 #                "Caso alguma informação não esteja disponível, deixe o valor do campo em branco. "
                 "Importante: NÃO atribua automaticamente '105' como GRUPO para a seção 'DECLARACAO DE BENS E DIREITOS'. "
-                "Cada item deve ter seu GRUPO e CODIGO corretos conforme os dados originais do documento, sem assumir '105 - Brasil' para todos, "
+                "Cada item deve ter seu GRUPO e CODIGO corretos conforme os dados originais do documento, sem assumir '105 - Brasil', ou '105' para nenhum item, "
                 "a menos que o próprio documento o indique. Caso alguma informação não esteja disponível, deixe o valor do campo em branco. "
                 "As datas devem estar no formato DD/MM/AAAA (ex.: 31/12/2021) e SITUACAOANTERIOR deve ser sempre anterior a SITUACAOATUAL."            
                 "NUNCA interrompa a resposta por conta do tamanho e não utilize o mesmo conjunto de campos para todos os itens; "
@@ -265,6 +265,8 @@ def extract_partial_xml_from_chunk(chunk_text: str) -> str:
                 "         </TABLE>\n"
                 "    </SECTION>\n"
                 "</XML_FINAL>\n"
+                "Importante: NÃO atribua automaticamente '105' como GRUPO para a seção 'DECLARACAO DE BENS E DIREITOS'. "
+                "Cada item deve ter seu GRUPO e CODIGO corretos conforme os dados originais do documento, sem assumir '105 - Brasil' ou '105' para nenhum deles."
             )
         )
     ]
