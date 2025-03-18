@@ -11,7 +11,7 @@ AWS_REGION = 'sa-east-1'
 
 # Configuração do KFP client
 KFP_HOST = 'https://ds-pipeline-dspa-safra-ai.apps.rosa-5hxrw.72zm.p1.openshiftapps.com'
-KFP_TOKEN = 'sha256~'
+KFP_TOKEN = ''
 PIPELINE_FILE = 'rhoai-pdf-to-xml.yaml'
 
 # Inicializa o cliente SQS

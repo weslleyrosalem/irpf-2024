@@ -26,16 +26,16 @@ logging.basicConfig(level=LOG_LEVEL)
 # ==============================
 # Configurações Gerais
 # ==============================
-AWS_S3_ENDPOINT = os.getenv("MINIO_ENDPOINT", "minio-api-minio.apps.cluster-mx7zs.mx7zs.sandbox2523.opentlc.com")
-AWS_ACCESS_KEY_ID = os.getenv("MINIO_ACCESS_KEY", "minio")
-AWS_SECRET_ACCESS_KEY = os.getenv("MINIO_SECRET_KEY", "minio123")
+AWS_S3_ENDPOINT = os.getenv("MINIO_ENDPOINT", "")
+AWS_ACCESS_KEY_ID = os.getenv("MINIO_ACCESS_KEY", "")
+AWS_SECRET_ACCESS_KEY = os.getenv("MINIO_SECRET_KEY", "")
 AWS_S3_BUCKET = os.getenv("MINIO_BUCKET", "irpf-files")
 
 # Milvus
 MILVUS_HOST = os.getenv("MILVUS_HOST", "vectordb-milvus.milvus.svc.cluster.local")
 MILVUS_PORT = int(os.getenv("MILVUS_PORT", "19530"))
-MILVUS_USERNAME = os.getenv("MILVUS_USERNAME", "root")
-MILVUS_PASSWORD = os.getenv("MILVUS_PASSWORD", "Milvus")
+MILVUS_USERNAME = os.getenv("MILVUS_USERNAME", "")
+MILVUS_PASSWORD = os.getenv("MILVUS_PASSWORD", "")
 MILVUS_COLLECTION = os.getenv("MILVUS_COLLECTION", "irpf")
 
 # LLM e inference server

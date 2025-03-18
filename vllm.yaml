@@ -252,7 +252,7 @@ spec:
             failureThreshold: 3
           env:
             - name: HUGGING_FACE_HUB_TOKEN
-              value: hf_
+              value: ''
           securityContext:
             capabilities:
               drop:
