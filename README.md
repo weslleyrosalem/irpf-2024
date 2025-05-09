@@ -1,36 +1,36 @@
-# IRPF 2024
+# IRPF 2024 / 2025
 
-Este repositório contém ferramentas e scripts para o processamento automatizado de PDFs relacionados ao **Imposto de Renda Pessoa Física (IRPF) de 2024**. O objetivo principal é facilitar a extração e conversão de dados desses PDFs utilizando técnicas de OCR e pipelines de processamento de dados.
+This repository contains tools and scripts for the automated processing of PDFs related to the **2024 Personal Income Tax (IRPF)** in Brazil. The main goal is to facilitate data extraction and conversion from these PDFs using OCR techniques and data processing pipelines.
 
-## 📁 Estrutura do Repositório
+## 📁 Repository Structure
 
-Abaixo está a descrição dos principais diretórios e arquivos presentes no repositório.
+Below is a description of the main directories and files in the repository.
 
-### 📂 Diretórios
+### 📂 Directories
 
-- **`milvus/`** - Contém scripts e configurações para integração com o banco de dados vetorial **Milvus**, utilizado para armazenamento e busca eficiente de vetores de características extraídas dos documentos.
-- **`pdfs/`** - Diretório destinado ao armazenamento dos arquivos **PDF do IRPF** que serão processados.
-- **`runtimes/`** - Inclui scripts e configurações relacionadas aos **ambientes de execução** necessários para os pipelines de processamento.
-- **`vector-db/`** - Contém scripts e configurações para a configuração e gerenciamento do **banco de dados vetorial** utilizado no projeto.
+- **`milvus/`** - Contains scripts and configuration files for integration with the **Milvus vector database**, used for efficient storage and retrieval of feature vectors extracted from documents.
+- **`pdfs/`** - Directory for storing the **IRPF PDF files** to be processed.
+- **`runtimes/`** - Includes scripts and configuration files related to the **execution environments** required for the processing pipelines.
+- **`vector-db/`** - Contains scripts and settings for configuring and managing the **vector database** used in this project.
 
-### 📄 Arquivos
+### 📄 Files
 
-- **`18_01782176543_2023_2024.pdf`** - Exemplo de um arquivo PDF do IRPF referente ao período de **2023-2024**, utilizado para testes e desenvolvimento.
-- **`Dockerfile`** - Arquivo de configuração para a criação de uma **imagem Docker** que define o ambiente necessário para a execução dos scripts e pipelines do projeto.
-- **`README.md`** - Este arquivo, fornecendo uma visão geral do repositório e instruções de uso.
-- **`app.py`** - Script principal da aplicação que **coordena o fluxo de processamento dos PDFs**, incluindo etapas de upload, extração de dados e armazenamento.
-- **`entrypoint.sh`** - Script de entrada utilizado para **inicializar o ambiente** e executar os serviços ou scripts necessários quando o contêiner Docker é iniciado.
-- **`kafka_consumer.py`** - Script responsável por consumir mensagens de um **tópico Kafka**, processando eventos relacionados ao upload de PDFs e iniciando os pipelines correspondentes.
-- **`rhoai-pdf-to-xml.py`** - Script que define o pipeline de **conversão de PDFs para XML**, utilizando ferramentas de OCR e outras técnicas de processamento de texto.
-- **`rhoai-pdf-to-xml.yaml`** - Arquivo de configuração em **YAML** que descreve o pipeline de conversão de PDFs para XML, incluindo as etapas, parâmetros e dependências necessárias.
-- **`sqs_consumer.py`** - Script responsável por consumir mensagens de uma **fila do Amazon SQS**. Ele monitora a fila para detectar eventos relacionados ao upload de PDFs e, ao receber uma mensagem, processa o evento e inicia o pipeline correspondente para conversão do PDF em XML. Este script é uma alternativa ao `kafka_consumer.py`, adaptado para ambientes que utilizam o **Amazon SQS** em vez do **Kafka**.
-- **`tesseract-saturno.ipynb`** - Notebook Jupyter que explora o uso do **Tesseract OCR** para extração de texto dos PDFs do IRPF, possivelmente incluindo experimentações e ajustes de parâmetros para melhorar a **acurácia do reconhecimento de caracteres**.
+- **`18_01782176543_2023_2024.pdf`** - Sample IRPF PDF file for the **2023–2024** period, used for testing and development purposes.
+- **`Dockerfile`** - Configuration file used to build a **Docker image** that defines the required environment to run the project’s scripts and pipelines.
+- **`README.md`** - This file, providing an overview of the repository and usage instructions.
+- **`app.py`** - Main application script that **coordinates the PDF processing flow**, including upload, data extraction, and storage steps.
+- **`entrypoint.sh`** - Entry script used to **initialize the environment** and run the necessary services or scripts when the Docker container starts.
+- **`kafka_consumer.py`** - Script responsible for consuming messages from a **Kafka topic**, handling events related to PDF uploads and triggering the appropriate pipelines.
+- **`rhoai-pdf-to-xml.py`** - Script that defines the **PDF-to-XML conversion pipeline**, leveraging OCR tools and other text processing techniques.
+- **`rhoai-pdf-to-xml.yaml`** - **YAML configuration file** describing the PDF-to-XML pipeline, including its steps, parameters, and dependencies.
+- **`sqs_consumer.py`** - Script that consumes messages from an **Amazon SQS queue**. It monitors the queue for PDF upload events and, upon receiving a message, processes the event and triggers the corresponding PDF-to-XML conversion pipeline. This script serves as an alternative to `kafka_consumer.py`, tailored for environments using **Amazon SQS** instead of **Kafka**.
+- **`tesseract-saturno.ipynb`** - Jupyter Notebook that explores the use of **Tesseract OCR** for text extraction from IRPF PDFs, possibly including experiments and parameter tuning to improve **character recognition accuracy**.
 
-## 🚀 Como Utilizar
+## 🚀 How to Use
 
-### 1️⃣ Configuração do Ambiente
+### 1️⃣ Environment Setup
 
-Utilize o `Dockerfile` para construir a **imagem Docker** que contém todas as dependências necessárias:
+Use the `Dockerfile` to build the **Docker image** containing all required dependencies:
 
 ```bash
 docker build -t irpf-2024 .
